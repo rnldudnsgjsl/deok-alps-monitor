@@ -1,0 +1,35 @@
+name: Deok Alps vacancy check
+
+on:
+  schedule:
+    - cron: "2/5 * 15-22 8 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deok-alps-vacancy
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: pip install -r requirements.txt
+
+      - name: Check vacancy
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python monitor.py

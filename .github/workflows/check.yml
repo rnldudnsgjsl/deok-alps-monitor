@@ -2,7 +2,7 @@ name: Deok Alps vacancy check
 
 on:
   schedule:
-    - cron: "2/5 * 15-22 8 *"
+    - cron: "2/5 * * * *"
   workflow_dispatch:
 
 permissions:

@@ -33,3 +33,15 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python monitor.py
+
+
+      - name: Test ntfy on manual run
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          curl -H "Title: 등억알프스 알림 테스트" \
+               -H "Priority: high" \
+               -H "Click: https://camping.ulju.ulsan.kr/ujcamping/campsite/booking" \
+               -d "GitHub 서버에서 보낸 테스트입니다. 휴대폰 알림이 정상 작동합니다." \
+               "https://ntfy.sh/$NTFY_TOPIC"

@@ -269,48 +269,104 @@ def main():
         log("ERROR: GitHub Secret NTFY_TOPIC이 설정되지 않았습니다.")
         sys.exit(2)
 
-    # Only act during the target period in Korea time.
-    now_kst = datetime.now(ZoneInfo("Asia/Seoul"))
-    if now_kst.year != 2026 or now_kst.month != 8 or now_kst.day > 22:
-        log("감시 기간 밖입니다. 종료합니다.")
-        return
+    # 수동 실행은 1회만 검사.
+    # Scheduled 실행은 5분 간격으로 반복 검사.
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    repeat_count = 1 if event_name == "workflow_dispatch" else 13
 
-    driver = make_driver()
-    try:
-        driver.get(BOOKING_URL)
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.TAG_NAME, "body"))
-        )
-        time.sleep(1.5)
+    last_available = set()
 
-        if not select_aug22(driver):
-            log("ERROR: 8월 22일 선택 실패")
-            sys.exit(3)
+    for check_no in range(1, repeat_count + 1):
+        started = time.monotonic()
 
-        if not select_deok(driver):
-            log("ERROR: 등억알프스야영장 선택/검증 실패")
-            sys.exit(4)
+        now_kst = datetime.now(ZoneInfo("Asia/Seoul"))
 
-        available, details = scan_sites(driver)
+        if (
+            now_kst.year != 2026
+            or now_kst.month != 8
+            or now_kst.day > 22
+        ):
+            log("감시 기간 밖입니다. 종료합니다.")
+            return
 
-        for site in TARGET_SITES:
-            if details.get(site):
-                log(f"{site}번: {details[site]}")
+        log(f"===== 확인 {check_no}/{repeat_count} 시작 =====")
 
-        if available:
-            nums = ", ".join(f"{x}번" for x in sorted(available))
-            log(f"예약 가능 발견: {nums}")
-            ntfy_send(
-                topic,
-                "등억알프스 빈자리 발견!",
-                f"2026-08-22 / {nums} 예약 가능으로 감지\n"
-                "알림을 눌러 예약페이지를 확인하세요.",
+        driver = None
+
+        try:
+            driver = make_driver()
+
+            driver.get(BOOKING_URL)
+
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
-        else:
-            log("44~48번 빈자리 없음")
 
-    finally:
-        driver.quit()
+            time.sleep(1.5)
+
+            if not select_aug22(driver):
+                log("ERROR: 8월 22일 선택 실패")
+                continue
+
+            if not select_deok(driver):
+                log("ERROR: 등억알프스야영장 선택/검증 실패")
+                continue
+
+            available, details = scan_sites(driver)
+
+            for site in TARGET_SITES:
+                if details.get(site):
+                    log(f"{site}번: {details[site]}")
+
+            if available:
+                nums = ", ".join(
+                    f"{x}번" for x in sorted(available)
+                )
+
+                log(f"예약 가능 발견: {nums}")
+
+                new_sites = available - last_available
+
+                if new_sites:
+                    new_nums = ", ".join(
+                        f"{x}번" for x in sorted(new_sites)
+                    )
+
+                    ntfy_send(
+                        topic,
+                        "등억알프스 빈자리 발견!",
+                        f"2026-08-22 / {new_nums} 예약 가능으로 감지\n"
+                        "알림을 눌러 예약페이지를 확인하세요.",
+                    )
+
+                    log(f"휴대폰 알림 전송: {new_nums}")
+
+            else:
+                log("44~48번 빈자리 없음")
+
+            last_available = set(available)
+
+        except Exception as e:
+            log(f"ERROR: {type(e).__name__}: {e}")
+
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+
+        # 마지막 확인이 아니면 5분 간격 유지
+        if check_no < repeat_count:
+            elapsed = time.monotonic() - started
+            wait_seconds = max(0, 300 - elapsed)
+
+            log(
+                f"다음 확인까지 약 {wait_seconds:.0f}초 대기"
+            )
+
+            time.sleep(wait_seconds)
+
 
 if __name__ == "__main__":
     main()
